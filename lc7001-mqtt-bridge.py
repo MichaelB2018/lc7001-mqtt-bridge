@@ -26,6 +26,7 @@ except ImportError as e:
 
 cmd_id = 1
 zoneList = {}
+zoneType = {}
 config = {}
 
 # -------------------- LoadConfig -----------------------------------
@@ -114,6 +115,7 @@ def sendRawMQTT(topic, msg):
 
 def receiveMessageFromLC7001():
     global zoneList 
+    global zoneType 
     global config
     
     for msg_raw in iter(lambda: s.recv(4096).decode(), ''):
@@ -144,23 +146,34 @@ def receiveMessageFromLC7001():
                        logger.critical("System Status change was not successfully: "+str(msg))
                 elif (msg["Service"] == "ListZones"):
                    zoneList = {}
+                   zoneType = {}
                    for z in msg["ZoneList"]:
                      zoneList[z["ZID"]] = "" 
                    logger.debug("ZoneList successfully set: "+str(zoneList))
                 elif (msg["Service"] == "ReportZoneProperties"):
                    logger.info(str(msg["ZID"]) + " -> Name : " + msg["PropertyList"]["Name"] + " | Status: " + str(msg["PropertyList"]["Power"])  + " | Type: " + msg["PropertyList"]["DeviceType"])
                    zoneList[msg["ZID"]] = msg["PropertyList"]["Name"]
+                   zoneType[msg["ZID"]] = msg["PropertyList"]["DeviceType"]
                    logger.debug("ZoneList successfully set: "+str(zoneList))
                    if config["EnableDiscovery"]: 
                        topic = str(msg["PropertyList"]["Name"]).lower().replace(" ", "_")
-                       sendRawMQTT("homeassistant/light/"+topic+"/config", '{"name": "'+msg["PropertyList"]["Name"]+'", "command_topic": "home/legrand/light/command/'+str(msg["ZID"])+'", "state_topic": "home/legrand/light/state/'+str(msg["ZID"])+'"}')
+                       if (msg["PropertyList"]["DeviceType"] == "Switch"):
+                          sendRawMQTT("homeassistant/light/"+topic+"/config", '{"name": "'+msg["PropertyList"]["Name"]+'", "command_topic": "home/legrand/light/command/'+str(msg["ZID"])+'", "state_topic": "home/legrand/light/state/'+str(msg["ZID"])+'"}')
+                       elif (msg["PropertyList"]["DeviceType"] == "Dimmer"):
+                          sendRawMQTT("homeassistant/light/"+topic+"/config", '{"name": "'+msg["PropertyList"]["Name"]+'", "command_topic": "home/legrand/light/command/'+str(msg["ZID"])+'", "state_topic": "home/legrand/light/state/'+str(msg["ZID"])+'", "brightness_command_topic": "home/legrand/light/brightness_command/'+str(msg["ZID"])+'", "brightness_state_topic": "home/legrand/light/brightness/'+str(msg["ZID"])+'", "brightness_scale": 100}')
+                       else:
+                          logger.error("Unknown Type for ZID: "+str(msg["ZID"])+", Type: "+msg["PropertyList"]["DeviceType"])
                        time.sleep(1)
                    sendMQTT(msg["ZID"], msg["PropertyList"]["Power"])
                 elif (msg["Service"] == "ZonePropertiesChanged"):
                    propertyList = msg["PropertyList"]
-                   if (len(propertyList) == 2) and ("Power" in propertyList):
+                   if (zoneType[msg["ZID"]] == "Switch") and (len(propertyList) == 2) and ("Power" in propertyList):
                       logger.info(str(msg["ZID"]) + " -> Power: " + str(msg["PropertyList"]["Power"]))
                       sendMQTT(msg["ZID"], msg["PropertyList"]["Power"])
+                   elif (zoneType[msg["ZID"]] == "Dimmer") and (len(propertyList) == 2) and ("Power" in propertyList) and ("PowerLevel" in propertyList):
+                      logger.info(str(msg["ZID"]) + " -> Power: " + str(msg["PropertyList"]["Power"]) +  " -> PowerLevel: " + str(msg["PropertyList"]["PowerLevel"]))
+                      sendMQTT(msg["ZID"], msg["PropertyList"]["Power"])
+                      sendRawMQTT("home/legrand/light/brightness/"+str(msg["ZID"]), str(msg["PropertyList"]["PowerLevel"]))
                    else:
                       printMessage(msg)
                 elif (msg["Service"] == "ZoneAdded"):
@@ -225,6 +238,7 @@ def on_connect(client, userdata, flags, rc):
     
     logger.info("Connected to MQTT with result code "+str(rc))
     t.subscribe("home/legrand/light/command/+")
+    t.subscribe("home/legrand/light/brightness_command/+")
     t.subscribe("home/legrand/switch/config")
     if config["EnableDiscovery"]:
         restart_thread = threading.Thread(target=sendStartupInfo)
@@ -253,6 +267,17 @@ def receiveMessageFromMQTT(client, userdata, message):
             logger.info("sending message: "+str(cmd))
             sendMessageToLC7001(cmd)
             cmd_id = cmd_id+1
+        if type == "brightness_command":
+            ZID = int(topic.split("/")[4])
+            level = int(msg)
+
+            cmd = {"ID": cmd_id, "Service": "SetZoneProperties", "ZID": ZID}
+            cmd1 = {"PowerLevel": level}
+            cmd["PropertyList"] = cmd1
+
+            logger.info("sending message: "+str(cmd))
+            sendMessageToLC7001(cmd)
+            cmd_id = cmd_id+1            
         elif type == "config":
             state = lcState(msg)
             
@@ -272,11 +297,13 @@ def receiveMessageFromMQTT(client, userdata, message):
 def getStatupState():
     global cmd_id
     global zoneList 
+    global zoneType 
     
     sendRawMQTT("homeassistant/switch/legrand_discovery/config", '{"name": "Legrand Discovery", "command_topic": "home/legrand/switch/config", "state_topic": "home/legrand/switch/state"}')
     sendRawMQTT("home/legrand/switch/state", "OFF")
     
     zoneList = {}
+    zoneType = {}
     cmd = {"ID": cmd_id, "Service": "ListZones"}
     logger.info("sending message: "+str(cmd))
     sendMessageToLC7001(cmd)
