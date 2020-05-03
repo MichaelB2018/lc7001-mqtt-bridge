@@ -118,7 +118,7 @@ def receiveMessageFromLC7001():
     global zoneType 
     global config
     
-    for msg_raw in iter(lambda: s.recv(4096).decode(), ''):
+    for msg_raw in iter(lambda: s.recv(8192).decode(), ''):
         try:
             ### Sometime 2 messages come as one... MUST BE FIXED
             msgs = json.loads("["+msg_raw.replace(chr(0), "").replace("}{", "},{")+"]")
