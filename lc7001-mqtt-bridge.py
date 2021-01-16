@@ -109,8 +109,8 @@ def lcState(stateStr):
        
 def sendMQTT(ZID, device_type, status):
     if (device_type == "Switch"):
-       logger.info("PUBLISHING to MQTT: home/legrand/switch/state/" + str(ZID) + " = " + haState(status))
-       t.publish("home/legrand/switch/state/"+str(ZID),haState(status),retain=True)
+       logger.info("PUBLISHING to MQTT: home/legrand/light/state/" + str(ZID) + " = " + haState(status))
+       t.publish("home/legrand/light/state/"+str(ZID),haState(status),retain=True)
     elif (device_type == "Dimmer"):
        logger.info("PUBLISHING to MQTT: home/legrand/light/state/" + str(ZID) + " = " + haState(status))
        t.publish("home/legrand/light/state/"+str(ZID),haState(status),retain=True)
@@ -167,7 +167,7 @@ def receiveMessageFromLC7001():
                    if config["EnableDiscovery"]: 
                        topic = str(msg["PropertyList"]["Name"]).lower().replace(" ", "_")
                        if (msg["PropertyList"]["DeviceType"] == "Switch"):
-                          sendRawMQTT("homeassistant/switch/"+topic+"/config", '{"name": "'+msg["PropertyList"]["Name"]+'", "unique_id": "Legrand_switch_'+str(msg["ZID"])+'","command_topic": "home/legrand/switch/command/'+str(msg["ZID"])+'", "state_topic": "home/legrand/switch/state/'+str(msg["ZID"])+'"}')
+                          sendRawMQTT("homeassistant/light/"+topic+"/config", '{"name": "'+msg["PropertyList"]["Name"]+'", "unique_id": "Legrand_light_'+str(msg["ZID"])+'","command_topic": "home/legrand/light/command/'+str(msg["ZID"])+'", "state_topic": "home/legrand/light/state/'+str(msg["ZID"])+'"}')
                        elif (msg["PropertyList"]["DeviceType"] == "Dimmer"):
                           sendRawMQTT("homeassistant/light/"+topic+"/config", '{"name": "'+msg["PropertyList"]["Name"]+'", "unique_id": "Legrand_light_'+str(msg["ZID"])+'","command_topic": "home/legrand/light/command/'+str(msg["ZID"])+'", "state_topic": "home/legrand/light/state/'+str(msg["ZID"])+'", "brightness_command_topic": "home/legrand/light/brightness_command/'+str(msg["ZID"])+'", "brightness_state_topic": "home/legrand/light/brightness/'+str(msg["ZID"])+'", "brightness_scale": 100}')
                        else:
